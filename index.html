@@ -210,6 +210,7 @@ function zaehlen(art, idx, ok) {
   if (art) {
     F[art] = F[art] || {}; const st = F[art][idx] || (F[art][idx] = { r: 0, f: 0 }); st[ok ? 'r' : 'f']++;
     if (!ok) st.lf = heuteIso();
+    if (art === 'quiz') st.zr = F.qrunde || 0;
     if (art === 'quiz') { st.fach = ok ? Math.min((st.fach || 0) + 1, INTERVALLE.length - 1) : 0; st.due = inTagen(INTERVALLE[st.fach]); }
   }
   F.antworten++; const h = heute(); h.antworten++;
@@ -287,7 +288,7 @@ function start() {
   const fl = faellige().filter(i => th.includes(QUIZ[i][0])), nFaellig = fl.length, nGestern = gesternFalsch(fl).length;
   const ap1 = store.get('ap1', ''), ap1Tage = ap1 ? Math.round((new Date(ap1 + 'T00:00') - new Date(heuteIso() + 'T00:00')) / 864e5) : -1;
   const kacheln = [
-    ['?', 'Quiz', `${QUIZ.filter(q => th.includes(q[0])).length} Fragen`, 'quizStart(false)'],
+    ['?', 'Quiz', `${QUIZ.filter((q, i) => th.includes(q[0]) && F.quiz[i]).length} von ${QUIZ.filter(q => th.includes(q[0])).length} gesehen`, 'quizStart(false)'],
     ['⚡', 'Blitzrunde', `Rekord ${F.rekorde.blitz || 0}`, 'blitzStart()'],
     ['▤', 'Karteikarten', `${KARTEN.filter(k => th.includes(k[0])).length} Karten`, 'kartenStart()'],
     ['✳', 'Mix-Runde', '12 Aufgaben gemischt', 'mixStart()'],
@@ -332,17 +333,30 @@ function thema(k) {
 
 // ===== Quiz (auch Mix-Runde und „Heute fällig“) – Einträge: ['q', idx] oder ['w', idx]
 let QZ = null;
+function quizMischung(pool, n = 10) {   // max. 3 Fehlerfragen, Rest: nie gesehen, dann am längsten nicht gesehen
+  const runde = F.qrunde || 0, st = i => F.quiz[i] || {}, schwach = new Set(schwache());
+  const aus = mischen(pool.filter(i => schwach.has(i))).sort((a, b) => (st(b).lsf || 0) - (st(a).lsf || 0)).slice(0, 3);
+  let rest = pool.filter(i => !aus.includes(i));
+  const frisch = rest.filter(i => (st(i).zr ?? -99) < runde - 1);
+  if (frisch.length >= n - aus.length) rest = frisch;
+  rest = mischen(rest).sort((a, b) => (F.quiz[a] ? (st(a).zr ?? -99) : -100) - (F.quiz[b] ? (st(b).zr ?? -99) : -100));
+  return aus.concat(rest.slice(0, n - aus.length));
+}
 function quizStart(nurFehler, themen, neue, liste, titel, extra) {
   if (!liste) {
     const th = themen || aktiveThemen();
     let pool = (nurFehler ? schwache() : QUIZ.map((q, i) => i)).filter(i => th.includes(QUIZ[i][0]));
     if (neue) { const u = pool.filter(i => !F.quiz[i]); if (u.length) pool = u; }
     if (!pool.length) { meldung('Keine Fragen für diese Auswahl'); return; }
-    const wert = i => { const s = F.quiz[i] || {}; return (s.r || 0) - 1.5 * (s.f || 0) - 3 * (s.lsf || 0) + (Math.random() * 2 - 1); };
-    pool = mischen(pool).sort((a, b) => wert(a) - wert(b));
-    liste = mischen(pool.slice(0, 10)).map(i => ['q', i]);
+    let aus;
+    if (nurFehler) {
+      const wert = i => { const s = F.quiz[i] || {}; return (s.r || 0) - 1.5 * (s.f || 0) - 3 * (s.lsf || 0) + (Math.random() * 2 - 1); };
+      aus = mischen(pool).sort((a, b) => wert(a) - wert(b)).slice(0, 10);
+    } else aus = quizMischung(pool);
+    liste = mischen(aus).map(i => ['q', i]);
   }
   titel = titel || (nurFehler ? 'Fehler üben' : (themen && themen.length === 1 ? 'Quiz ' + KURZ[themen[0]] : 'Quiz'));
+  F.qrunde = (F.qrunde || 0) + 1;
   QZ = Object.assign({ liste: liste.slice(), i: 0, ok: 0, combo: 0, falsch: [], fehler: nurFehler, xp: 0, themen, neue, titel, start: Date.now() }, extra || {});
   if (QZ.pruef) QZ.ende = Date.now() + QZ.pruef * 1000;
   quizFrage();
@@ -1146,6 +1160,7 @@ function fortschritt() {
   resetScharf = false;
   const inh = buehne('Fortschritt', 'start()');
   inh.innerHTML = `<div class="karte"><div class="zeile"><span>Antworten gesamt</span><b>${F.antworten}</b></div><div class="zeile"><span>Davon richtig</span><b>${F.antworten ? Math.round(F.richtig / F.antworten * 100) + ' %' : '–'}</b></div>
+    <div class="zeile"><span>Quizfragen gesehen</span><b>${Object.keys(F.quiz).length} / ${QUIZ.length}</b></div>
     <div class="zeile"><span>Lerntage in Folge</span><b>${F.serie_tage || 0}</b></div><div class="zeile"><span>Blitzrunde-Rekord</span><b>${F.rekorde.blitz || 0}</b></div><div class="zeile"><span>Beste Rechen-Serie</span><b>${F.rekorde.rechnen || 0}</b></div></div>
     <div class="abschnitt mt">TREFFERQUOTE NACH THEMEN</div><div class="karte">${Object.keys(THEMEN).map(k => { const [r, f] = themaQuote(k), q = r + f ? r / (r + f) : null;
       return `<div class="statzeile"><span>${esc(KURZ[k])}</span><div class="balken ${q === null ? '' : q < 0.5 ? 'rot schwach' : q < 0.75 ? 'gelb' : 'gruen'}"><i style="width:${(q || 0) * 100}%"></i></div><b class="${q !== null && q < 0.5 ? 'rotschrift' : ''}">${q === null ? '–' : Math.round(q * 100) + ' %'}</b></div>`; }).join('')}</div>
