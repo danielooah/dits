@@ -641,7 +641,11 @@ function zuordnenEnde() {
 const WISSEN = D.wissen, FORMELN = D.formeln, KAT = D.katalog;
 const fett = t => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
 const katTitel = k => THEMEN[k] || KAT.neu[k].titel;
-const katBloecke = k => KAT.neu[k] ? KAT.neu[k].bloecke : WISSEN.find(x => x.t === k).bloecke.concat(KAT.erg[k] || []);
+const katBloecke = k => {
+  const basis = KAT.neu[k] ? KAT.neu[k].bloecke : WISSEN.find(x => x.t === k).bloecke, erg = KAT.erg[k] || [];
+  let pos = basis.findIndex(b => b[0] === 'h' && b[1].startsWith('Übungsaufgaben')); if (pos < 0) pos = basis.length;
+  return basis.slice(0, pos).concat(erg, basis.slice(pos));
+};
 const KAT_KEYS = KAT.bereiche.flatMap(b => b[1]);
 const GF = { T: 'var(--text)', L: 'var(--leicht)', R: 'var(--rand)', K: 'var(--karte)', F: 'var(--feldlesen)', X: 'var(--neutral)', A: 'var(--akzent)', AT: 'var(--akzenttext)', M: 'var(--marke)', OK: 'var(--oks)', OKF: 'var(--okf)', W: 'var(--ws)', WF: 'var(--wf)', N: 'var(--ns)', NF: 'var(--nf)', '': 'none' };
 function grafikSvg(name) {
