@@ -30,6 +30,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;text-a
 #app{max-width:680px;margin:0 auto;padding:12px 14px calc(40px + env(safe-area-inset-bottom))}
 .leiste{display:flex;align-items:center;gap:10px;margin:4px 0 12px}.leiste h2{font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--leicht);margin:0;flex:1}
 #rechts{font-weight:700;font-size:14px;color:var(--leicht);font-variant-numeric:tabular-nums}#rechts.rot{color:var(--gefahr)}
+.flagge{width:38px;height:38px;border-radius:10px;background:var(--karte);border:1px solid var(--rand);text-align:center;font-size:17px;color:var(--leicht)}.flagge:active{background:var(--hover)}
 .zurueck{width:38px;height:38px;border-radius:10px;background:var(--karte);border:1px solid var(--rand);text-align:center;font-size:18px}
 .karte{background:var(--karte);border:1px solid var(--rand);border-radius:14px;padding:16px;margin-bottom:12px}
 .karte.mini{padding:12px 14px}.karte.mini p{margin:4px 0 0}
@@ -276,7 +277,7 @@ function kopf() {
 function buehne(titel, zurueck, rechts = '') {
   aufraeumen(); window.scrollTo(0, 0);
   document.body.classList.toggle('unter', !!zurueck);
-  $('#app').innerHTML = `<div class="leiste">${zurueck ? `<button class="zurueck" onclick="${zurueck}">←</button>` : ''}<h2>${esc(titel)}</h2><span id="rechts">${rechts}</span></div><div id="inhalt"></div>`;
+  $('#app').innerHTML = `<div class="leiste">${zurueck ? `<button class="zurueck" onclick="${zurueck}">←</button>` : ''}<h2>${esc(titel)}</h2><span id="rechts">${rechts}</span>${zurueck ? '<button class="flagge" onclick="meldenAllgemein()" aria-label="Fehler melden" title="Fehler melden">⚑</button>' : ''}</div><div id="inhalt"></div>`;
   return $('#inhalt');
 }
 function rechts(t, rot) { const r = $('#rechts'); if (r) { r.textContent = t; r.classList.toggle('rot', !!rot); } }
@@ -1313,6 +1314,22 @@ function meldenDialog(it) {
     <div class="reihe"><button class="knopf" onclick="$('#dialog').remove()">Abbrechen</button><button class="knopf akzent" onclick='meldenSenden(${JSON.stringify(it)}, ${JSON.stringify(fr)})'>Melden</button></div></div>`;
   document.body.appendChild(d);
 }
+function meldenAllgemein() {
+  // Melden aus jeder Übung: nimmt die gerade sichtbare Frage bzw. Aufgabe automatisch mit
+  const titel = (($('.leiste h2') || {}).textContent || '').trim();
+  const sel = ['.frage', '.wischkarte h3', '.wischkarte', '.frage-text', '.kontext', '.szenario', '.karte.wissen .wh', '.karte p', '.karte b'];
+  let fr = '';
+  for (const s of sel) { const el = document.querySelector('#inhalt ' + s); if (el && el.textContent.trim()) { fr = el.textContent.trim().replace(/\s+/g, ' '); break; } }
+  if (fr.length > 300) fr = fr.slice(0, 297) + '…';
+  const it = ['allg', titel];
+  const d = document.createElement('div'); d.className = 'dialog'; d.id = 'dialog';
+  d.innerHTML = `<div class="karte"><b>Was stimmt nicht?</b><p class="leicht klein">${esc(titel)}${fr ? ' · ' + esc(fr) : ''}</p>
+    <div class="chips">${['Antwort ist falsch', 'Frage ist unklar', 'Tippfehler', 'Sonstiges'].map((g, i) => `<button class="chip ${i ? '' : 'an'}" onclick="document.querySelectorAll('#dialog .chip').forEach(c=>c.classList.remove('an'));this.classList.add('an')">${g}</button>`).join('')}</div>
+    <textarea id="meldtext" rows="3" placeholder="Was ist dir aufgefallen? (freiwillig)"></textarea>
+    <div class="reihe"><button class="knopf" onclick="$('#dialog').remove()">Abbrechen</button><button class="knopf akzent" id="meldok">Melden</button></div></div>`;
+  document.body.appendChild(d);
+  $('#meldok').onclick = () => meldenSenden(it, fr);
+}
 function meldenSenden(it, fr) {
   const g = ($('#dialog .chip.an') || {}).textContent || '', t = ($('#meldtext') || {}).value || '';
   const m = store.get('meldungen', []); m.push({ tag: heuteIso(), it, fr, g, t }); store.set('meldungen', m);
@@ -1320,7 +1337,7 @@ function meldenSenden(it, fr) {
 }
 function meldungenHtml() {
   const m = store.get('meldungen', []); if (!m.length) return '';
-  return `<div class="abschnitt mt">MELDUNGEN (${m.length})</div><div class="karte">${m.map(x => `<p class="klein"><b>${esc(x.g)}</b> · ${esc(x.fr)}${x.t ? ' – ' + esc(x.t) : ''}</p>`).join('')}
+  return `<div class="abschnitt mt">MELDUNGEN (${m.length})</div><div class="karte">${m.map(x => `<p class="klein"><b>${esc(x.g)}</b> · ${x.it && x.it[0] === 'allg' ? esc(x.it[1]) + ': ' : ''}${esc(x.fr)}${x.t ? ' – ' + esc(x.t) : ''}</p>`).join('')}
     <p class="leicht klein">Kopiere die Liste und schick sie Claude – dann werden die Fragen korrigiert.</p>
     <div class="reihe"><button class="knopf weich" onclick="meldungenKopieren()">Alle kopieren</button><button class="knopf" onclick="store.set('meldungen',[]);fortschritt()">Liste leeren</button></div></div>`;
 }
